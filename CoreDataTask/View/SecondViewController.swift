@@ -80,18 +80,24 @@ class SecondViewController: UIViewController{
         saveButton.addTarget(self, action: #selector(saveButtonTapped), for: .touchUpInside)
     }
     @objc func rightButtonTapped() {
-        guard let itemToDelete = currentItem else { return }
-        delegate?.didDeleteItem(itemToDelete)
-        navigationController?.popViewController(animated: true)
+        let alertController = UIAlertController(title: "Delete Confirmation", message: "Are you sure you want to delete this item?", preferredStyle: .alert)
+        let yesAction = UIAlertAction(title: "Yes", style: .destructive) { [weak self] _ in
+            if let item = self?.itemToEdit {
+                self?.delegate?.didDeleteItem(item) 
+            }
+            self?.navigationController?.popViewController(animated: true)
+        }
+        let noAction = UIAlertAction(title: "No", style: .cancel, handler: nil)
+        alertController.addAction(yesAction)
+        alertController.addAction(noAction)
+        present(alertController, animated: true, completion: nil)
     }
     @objc func saveButtonTapped() {
         guard let title = titleTextView.text, !title.isEmpty,
               let description = descriptionTextView.text, !description.isEmpty else {
             return
         }
-        
-        let context = (UIApplication.shared.delegate as! AppDelegate).persistentContainer.viewContext
-        
+        let context = CoreDataModel.shared.persistentContainer.viewContext
         if let item = itemToEdit {
             item.title = title
             item.desc = description

@@ -29,17 +29,18 @@ class ViewController: UIViewController {
         tableView.allowsSelection = true
         return tableView
     }()
+    var viewModel = ToDoDataViewModel()
+    var viewActionModel = ToDoActionViewModel()
     override func viewDidLoad() {
         super.viewDidLoad()
         setup()
         setupConstraints()
-        fetchToDoItems()
     }
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         navigationController?.setNavigationBarHidden(true, animated: animated)
+        fetchItems()
     }
-    var toDoItems: [ListEntity] = []
     func setup(){
         tableView.register(CustomTableViewCell.self, forCellReuseIdentifier: "CustomTableViewCell")
         tableView.delegate = self
@@ -56,39 +57,18 @@ class ViewController: UIViewController {
         
     }
     @objc func buttonTapped(){
-        let secondVC = SecondViewController()
-        secondVC.delegate = self
-        navigationController?.pushViewController(secondVC, animated: true)
+        viewActionModel.navigateToSecondViewController(navigationController: navigationController!)
     }
-    func fetchToDoItems() {
-        let context = (UIApplication.shared.delegate as! AppDelegate).persistentContainer.viewContext
-        let fetchRequest: NSFetchRequest<ListEntity> = ListEntity.fetchRequest()
-
-        do {
-            toDoItems = try context.fetch(fetchRequest)
-            tableView.reloadData()
-        } catch {
-            print("Failed to fetch items: \(error)")
-        }
-    }
-    func updateToDoItem(_ item: ListEntity) {
-        if let index = toDoItems.firstIndex(where: { $0.id == item.id }) {
-            toDoItems[index] = item
-            tableView.reloadData()
-        }
-    }
-    func deleteToDoItem(_ item: ListEntity) {
-        let context = (UIApplication.shared.delegate as! AppDelegate).persistentContainer.viewContext
-        context.delete(item)
-        do {
-            try context.save()
-            if let index = toDoItems.firstIndex(of: item) {
-                toDoItems.remove(at: index)
-                tableView.reloadData()
+    func fetchItems() {
+        viewModel.fetchToDoItems { result in
+                switch result {
+                case .success(let items):
+                    self.viewModel.toDoItems = items
+                    self.tableView.reloadData()
+                case .failure(let error):
+                    print("Failed to fetch items: \(error)")
+                }
             }
-        } catch {
-            print("Failed to delete item: \(error)")
-        }
     }
     func setupConstraints(){
         toDoLabel.snp.makeConstraints{make in
@@ -108,32 +88,67 @@ class ViewController: UIViewController {
     }
 }
 extension ViewController:UITableViewDataSource,UITableViewDelegate,SecondViewControllerDelegate{
+    
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return toDoItems.count
+        return viewModel.toDoItems.count
     }
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "CustomTableViewCell", for: indexPath) as! CustomTableViewCell
-        let item = toDoItems[indexPath.row]
+        let item = viewModel.toDoItems[indexPath.row]
         cell.configure(with: item)
         
         return cell
     }
     func didSaveItem(_ item: ListEntity) {
-        toDoItems.append(item)
+        viewModel.toDoItems.append(item)
         tableView.reloadData()
     }
     func didUpdateItem(_ item: ListEntity) {
-        updateToDoItem(item)
+        viewModel.updateToDoItem(item: item) { success in
+            if success {
+                self.tableView.reloadData()
+            } else {
+                print("Failed to update")
+            }
+        }
     }
     func didDeleteItem(_ item: ListEntity) {
-        deleteToDoItem(item)
+        viewModel.deleteToDoItem(item: item) { success in
+            if success {
+                if let index = self.viewModel.toDoItems.firstIndex(of: item) {
+                    self.viewModel.toDoItems.remove(at: index)
+                    let indexPath = IndexPath(row: index, section: 0)
+                    self.tableView.deleteRows(at: [indexPath], with: .automatic)
+                }
+                self.tableView.reloadData()
+            } else {
+                print("Failed to delete")
+            }
+        }
     }
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
         return 70
     }
+    func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+            let deleteAction = UIContextualAction(style: .destructive, title: "Delete") { (action, view, completionHandler) in
+                let itemToDelete = self.viewModel.toDoItems[indexPath.row]
+                self.viewModel.deleteToDoItem(item: itemToDelete) { success in
+                    if success {
+                        self.tableView.deleteRows(at: [indexPath], with: .fade)
+                    } else {
+                        print("Failed to delete")
+                    }
+                }
+                completionHandler(true)
+            }
+            deleteAction.backgroundColor = .red
+            let configuration = UISwipeActionsConfiguration(actions: [deleteAction])
+            configuration.performsFirstActionWithFullSwipe = false
+            return configuration
+        }
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        let selectedItem = toDoItems[indexPath.row]
+        let selectedItem = viewModel.toDoItems[indexPath.row]
         let secondVC = SecondViewController()
         secondVC.saveButton.setTitle("Update", for: .normal)
         secondVC.delegate = self
